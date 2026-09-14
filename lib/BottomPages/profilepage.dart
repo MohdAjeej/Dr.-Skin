@@ -1,5 +1,4 @@
 import 'package:O2ISkinSense/Otherspages/DoctorProfilePage.dart';
-import 'package:O2ISkinSense/imagecrop/main_page.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:O2ISkinSense/Api/ApiService.dart';
@@ -435,32 +434,6 @@ class _MyProfileState extends State<MyProfile> {
       margin: EdgeInsets.all(20),
       child: Column(
         children: [
-          // Debug Button (can be removed in production)
-          Container(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => MainPage()),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: backgroundColor,
-                foregroundColor: textSecondary,
-                padding: EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: textSecondary.withOpacity(0.3)),
-                ),
-              ),
-              child: Text(
-                'Go to Second Page',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ),
-          
-          SizedBox(height: 16),
-          
           // Logout Button
           Container(
             width: double.infinity,

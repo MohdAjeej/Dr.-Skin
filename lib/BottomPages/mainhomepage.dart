@@ -42,10 +42,38 @@ class _MainHomePageState extends State<MainHomePage> {
   Future<void> _loadUserInfo() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString("username");
+      
+      // Try to get full name first (firstName + lastName for patient, name for doctor)
+      final userRole = prefs.getString("roles") ?? "ROLE_NORMAL";
+      String displayName = "User";
+      
+      if (userRole == "ROLE_DOCTOR") {
+        // For doctor, try to get name from profile
+        try {
+          final doctorData = await ApiService().getDoctorProfileData();
+          displayName = doctorData['name'] ?? prefs.getString("username") ?? "Doctor";
+        } catch (e) {
+          displayName = prefs.getString("username") ?? "Doctor";
+        }
+      } else {
+        // For patient, try to get firstName + lastName
+        try {
+          final patientData = await ApiService().getPatientProfile();
+          final firstName = patientData['firstName'] ?? '';
+          final lastName = patientData['lastName'] ?? '';
+          if (firstName.isNotEmpty || lastName.isNotEmpty) {
+            displayName = '$firstName $lastName'.trim();
+          } else {
+            displayName = prefs.getString("username") ?? "User";
+          }
+        } catch (e) {
+          displayName = prefs.getString("username") ?? "User";
+        }
+      }
+      
       if (mounted) {
         setState(() {
-          _userName = username ?? "User";
+          _userName = displayName;
           _isLoadingProfile = false;
         });
       }
