@@ -297,7 +297,7 @@ class _MyProfileState extends State<MyProfile> {
               );
               // Reload profile if edited
               if (result == true) {
-                loadProfile();
+                fetchProfile();
               }
             },
           ),
