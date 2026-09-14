@@ -45,22 +45,29 @@ class _DermatologyDoctorSearchState extends State<DermatologyDoctorSearch> {
     });
 
     try {
+      debugPrint('DermatologyDoctorSearch: Fetching doctors...');
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/api/doctors/get-all-doctors'),
         headers: {'Content-Type': 'application/json'},
       );
 
+      debugPrint('DermatologyDoctorSearch: Response status: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
         final List<dynamic> doctors = json.decode(response.body);
+        debugPrint('DermatologyDoctorSearch: Found ${doctors.length} doctors');
+        
         setState(() {
           _allDoctors = doctors;
           _filteredDoctors = doctors;
           _isLoading = false;
         });
       } else {
+        debugPrint('DermatologyDoctorSearch: Failed with status ${response.statusCode}');
         throw Exception('Failed to load doctors');
       }
     } catch (e) {
+      debugPrint('DermatologyDoctorSearch: Error - $e');
       setState(() {
         _isLoading = false;
       });
