@@ -88,7 +88,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: onboarding
-          ? (jwtToken != null ? _getHomePageForRole() : LoginPage())
+          ? (jwtToken?.trim().isNotEmpty == true ? _getHomePageForRole() : LoginPage())
           : const OnboardingView(),
       builder: (context, child) {
         return Stack(

@@ -106,13 +106,25 @@ class _DiseaseResultPageState extends State<DiseaseResultPage> {
 
   // Add this helper method to get disease name
   String get diseaseName {
-    return widget.result['predictions'] != null
-        ? widget.result['predictions'][0]['class']
-        : 'No result available';
+    final aiName = widget.result['diseaseName'];
+    if (aiName is String && aiName.trim().isNotEmpty) return aiName;
+
+    final predictions = widget.result['predictions'];
+    if (predictions is List && predictions.isNotEmpty &&
+        predictions.first is Map) {
+      return predictions.first['class']?.toString() ?? 'No result available';
+    }
+    return 'No result available';
   }
 
-// Modify _fetchData method
+  bool get _hasAiAssessment =>
+      widget.result['provider'] == 'gemini' &&
+      widget.result['diseaseName'] is String;
+
   Future<void> _fetchData() async {
+    // The Gemini result is already complete; it is not a canonical catalog key.
+    if (_hasAiAssessment || widget.result.containsKey('error')) return;
+
     if (diseaseName.toLowerCase() == 'no') {
       await _fetchDoctorData('general');
     } else {
@@ -122,7 +134,6 @@ class _DiseaseResultPageState extends State<DiseaseResultPage> {
       await _fetchImageUrls(diseaseName);
     }
   }
-
 // Update _fetchDoctorData to handle 'no' case
   Future<void> _fetchDoctorData(String diseaseName) async {
     setState(() {
@@ -220,6 +231,66 @@ class _DiseaseResultPageState extends State<DiseaseResultPage> {
   }
 
   Widget _buildContent() {
+    if (widget.result.containsKey('error')) {
+      final message = widget.result['error']?.toString() ??
+          'The diagnosis service could not complete the request.';
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'AI diagnosis unavailable\n$message',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, color: Colors.red),
+          ),
+        ),
+      );
+    }
+
+    if (_hasAiAssessment) {
+      final confidence = widget.result['confidence'];
+      final confidenceText = confidence is num
+          ? '${(confidence <= 1 ? confidence * 100 : confidence).toStringAsFixed(1)}%'
+          : 'Not provided';
+      final severity = widget.result['severity']?.toString() ?? 'Not provided';
+      final disclaimer = widget.result['disclaimer']?.toString() ??
+          'This is an informational AI assessment, not a medical diagnosis. '
+              'Consult a dermatologist for medical advice.';
+
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildDiagnosisHeader(),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Severity: $severity',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Text('Model confidence estimate: $confidenceText'),
+                  ],
+                ),
+              ),
+            ),
+            _buildAiListCard('Observed symptoms', widget.result['symptoms']),
+            _buildAiListCard('General guidance', widget.result['advice']),
+            Card(
+              color: Colors.amber.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(disclaimer),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_isLoading || _isAdditionalLoading || _isDoctorLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -259,7 +330,29 @@ class _DiseaseResultPageState extends State<DiseaseResultPage> {
     );
   }
 
-// Update _buildDiagnosisHeader to handle 'no' case
+  Widget _buildAiListCard(String title, dynamic values) {
+    final items = values is List
+        ? values.map((item) => item.toString()).toList()
+        : <String>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            ...items.map((item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• $item'),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
   Widget _buildDiagnosisHeader() {
     return Container(
       padding: EdgeInsets.all(20),

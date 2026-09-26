@@ -55,7 +55,7 @@ class _CropImagePageState extends State<CropImagePage> {
       if (!mounted) return;
 
       if (croppedFile != null) {
-        Navigator.pop(context, croppedFile);
+        Navigator.pop<File>(context, File(croppedFile.path));
       } else {
         Navigator.pop(context);
       }

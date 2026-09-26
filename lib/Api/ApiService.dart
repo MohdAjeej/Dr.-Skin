@@ -39,45 +39,57 @@ class ApiService {
 
   Future<Map<String, dynamic>> diagnoseSkin(File imageFile) async {
     try {
+      final token = await _getToken();
+      if (token == null || token.trim().isEmpty) {
+        return {'error': 'Please log in before starting an AI diagnosis'};
+      }
+
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/predict'),
       );
-
+      request.headers['Auth'] = 'Bearer $token';
       request.files.add(
-        await http.MultipartFile.fromPath(
-          'file',
-          imageFile.path,
-        ),
+        await http.MultipartFile.fromPath('file', imageFile.path),
       );
 
       final response = await request.send();
-
-      final responseBody =
-          await response.stream.bytesToString();
+      final responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
         final data = jsonDecode(responseBody);
-
         if (data is Map<String, dynamic>) {
+          final diseaseName = data['diseaseName'];
+          if (diseaseName is String && diseaseName.trim().isNotEmpty) {
+            final predictions = data['predictions'];
+            if (predictions is! List || predictions.isEmpty) {
+              data['predictions'] = [
+                {
+                  'class': diseaseName,
+                  'confidence': data['confidence'],
+                },
+              ];
+            }
+          }
           return data;
         }
-
-        return {
-          'error': 'Invalid response format',
-        };
+        return {'error': 'Invalid AI response format'};
       }
 
+      String? message;
+      try {
+        final errorData = jsonDecode(responseBody);
+        if (errorData is Map<String, dynamic>) {
+          message = errorData['error']?.toString();
+        }
+      } catch (_) {}
       return {
-        'error': 'Error: ${response.statusCode}',
+        'error': message ?? 'AI diagnosis failed (HTTP ${response.statusCode})',
       };
     } catch (e) {
-      return {
-        'error': 'Failed to connect to the server: $e',
-      };
+      return {'error': 'Failed to connect to the diagnosis server: $e'};
     }
   }
-
   Future<dynamic> registerUser({
     required String userName,
     required String email,
@@ -141,25 +153,20 @@ class ApiService {
     }
   }
 
-  Future<bool> getUserProfile(String authToken) async {
-    final url = Uri.parse(
-      '$baseUrl/api/profile/get-userProfile',
-    );
+  Future<int?> getUserProfile(String authToken) async {
+    final url = Uri.parse('$baseUrl/api/profile/get-userProfile');
 
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Auth': 'Bearer $authToken',
-        },
+        headers: {'Auth': 'Bearer $authToken'},
       );
-
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
+      return response.statusCode;
+    } catch (e) {
+      print('User profile check failed: $e');
+      return null;
     }
   }
-
   Future<Map<String, dynamic>> loginUser({
     required String email,
     required String password,

@@ -80,13 +80,27 @@ class _DiagnosePageState extends State<DiagnosePage>
   }
 
   Future<void> savetodatabase() async {
-    ApiService apiService = ApiService();
-    String disease = _result?['predictions'] != null
-        ? _result!['predictions'][0]['class']
-        : 'No result available';
-    await apiService.uploadDiseaseHistory(widget.image, disease);
-  }
+    if (_result == null || _result!.containsKey('error')) return;
 
+    final aiDiseaseName = _result!['diseaseName'];
+    final predictions = _result!['predictions'];
+    final String disease;
+    if (aiDiseaseName is String && aiDiseaseName.trim().isNotEmpty) {
+      disease = aiDiseaseName;
+    } else if (predictions is List && predictions.isNotEmpty &&
+        predictions.first is Map) {
+      disease = predictions.first['class']?.toString() ?? '';
+    } else {
+      disease = '';
+    }
+    if (disease.isEmpty) return;
+
+    try {
+      await ApiService().uploadDiseaseHistory(widget.image, disease);
+    } catch (e) {
+      debugPrint('Could not save diagnosis history: $e');
+    }
+  }
   void _navigateToResultPage() {
     Navigator.push(
       context,

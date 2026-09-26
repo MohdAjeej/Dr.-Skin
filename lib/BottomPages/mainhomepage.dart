@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:O2ISkinSense/Api/ApiService.dart';
+import 'package:O2ISkinSense/Signup/LoginPage.dart';
 import 'package:O2ISkinSense/Components/app_theme.dart';
 import 'package:O2ISkinSense/Otherspages/cropimage.dart';
 import 'package:O2ISkinSense/Otherspages/DiagnoseAnimationPage.dart';
@@ -87,15 +88,14 @@ class _MainHomePageState extends State<MainHomePage> {
   Future<void> _checkProfileStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString("jwtToken");
-      final userRole = prefs.getString("roles");
+      final token = prefs.getString('jwtToken');
+      final userRole = prefs.getString('roles');
 
-      if (token == null) return;
+      if (token == null || token.trim().isEmpty) return;
 
       final apiService = ApiService();
 
-      // Check if doctor role
-      if (userRole == "ROLE_DOCTOR") {
+      if (userRole == 'ROLE_DOCTOR') {
         final isDoctorProfileComplete = await apiService.getDoctorProfile(token);
         if (!isDoctorProfileComplete && mounted) {
           Navigator.pushReplacement(
@@ -106,19 +106,27 @@ class _MainHomePageState extends State<MainHomePage> {
         }
       }
 
-      // Check patient profile
-      final isPatientProfileComplete = await apiService.getUserProfile(token);
-      if (!isPatientProfileComplete && mounted) {
+      final profileStatus = await apiService.getUserProfile(token);
+      if (!mounted) return;
+
+      if (profileStatus == 404) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => CreateProfilePage()),
+        );
+      } else if (profileStatus == 401) {
+        await prefs.remove('jwtToken');
+        await prefs.remove('refreshToken');
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => LoginPage()),
         );
       }
     } catch (e) {
       debugPrint('Profile check error: $e');
     }
   }
-
   Future<void> _pickAndCropImage(ImageSource source) async {
     if (_isProcessing) return;
 

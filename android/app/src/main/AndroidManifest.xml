@@ -2,6 +2,7 @@
     package="com.o2i.O2ISkinSense">
 
     <application
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:label="DR.SKIN"
         android:name="${applicationName}"
