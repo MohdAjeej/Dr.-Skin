@@ -2,9 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:O2ISkinSense/Components/color.dart';
 import 'package:O2ISkinSense/Signup/Register.dart';
 import 'package:O2ISkinSense/Signup/LoginPage.dart';
+import 'package:O2ISkinSense/Api/ApiService.dart';
+import 'package:O2ISkinSense/BottomPages/BottomNav.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SubscriptionPlansPage extends StatefulWidget {
-  const SubscriptionPlansPage({Key? key}) : super(key: key);
+  final String? initialPlanId;
+  final String? initialBillingPeriod;
+  final bool checkoutAfterLogin;
+
+  const SubscriptionPlansPage({
+    Key? key,
+    this.initialPlanId,
+    this.initialBillingPeriod,
+    this.checkoutAfterLogin = false,
+  }) : super(key: key);
 
   @override
   State<SubscriptionPlansPage> createState() => _SubscriptionPlansPageState();
@@ -13,61 +26,202 @@ class SubscriptionPlansPage extends StatefulWidget {
 class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
   int? _selectedPlanIndex;
   bool _isYearly = false;
+  bool _isLoadingPlans = true;
+  bool _isProcessingPayment = false;
+  String? _plansError;
+  List<Map<String, dynamic>> _plans = [];
+  late final Razorpay _razorpay;
+  final ApiService _apiService = ApiService();
 
-  final List<Map<String, dynamic>> _plans = [
-    {
-      'name': 'Free',
-      'monthlyPrice': 0,
-      'yearlyPrice': 0,
-      'description': 'Perfect for trying out our AI skin analysis',
-      'features': [
-        '1 AI Diagnosis per month',
-        'Basic skin care tips',
-        'Disease information',
-        'Limited chat support',
-      ],
-      'isPopular': false,
-      'color': Color(0xFF6B73FF),
-    },
-    {
-      'name': 'Premium',
-      'monthlyPrice': 499,
-      'yearlyPrice': 4990,
-      'description': 'Most popular choice for regular users',
-      'features': [
-        '10 AI Diagnoses per month',
-        'Unlimited doctor consultations',
-        'Priority appointment booking',
-        'Diagnosis history & reports',
-        '24/7 chat support',
-        'Personalized skincare tips',
-      ],
-      'isPopular': true,
-      'color': Color(0xFF6B73FF),
-    },
-    {
-      'name': 'Pro',
-      'monthlyPrice': 999,
-      'yearlyPrice': 9990,
-      'description': 'For comprehensive skin health management',
-      'features': [
-        'Unlimited AI Diagnoses',
-        'Unlimited video consultations',
-        'Instant appointment booking',
-        'Complete diagnosis history',
-        'Dedicated support manager',
-        'Custom treatment plans',
-        'Monthly follow-up calls',
-        'Exclusive wellness content',
-      ],
-      'isPopular': false,
-      'color': Color(0xFF6B73FF),
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _isYearly = widget.initialBillingPeriod?.toLowerCase() == 'yearly';
+    _razorpay = Razorpay()
+      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess)
+      ..on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError)
+      ..on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+    _loadPlans();
+  }
+
+  Future<void> _loadPlans() async {
+    setState(() {
+      _isLoadingPlans = true;
+      _plansError = null;
+    });
+    try {
+      final plans = await _apiService.getSubscriptionPlans();
+      if (!mounted) return;
+      final selectedIndex = plans.indexWhere(
+        (plan) => plan['id'] == widget.initialPlanId,
+      );
+      setState(() {
+        _plans = plans;
+        _selectedPlanIndex = selectedIndex >= 0 ? selectedIndex : null;
+        _isLoadingPlans = false;
+      });
+
+      if (widget.checkoutAfterLogin && selectedIndex >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startSubscriptionCheckout();
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _plansError = error.toString();
+        _isLoadingPlans = false;
+      });
+    }
+  }
+
+  Future<void> _continueWithSelectedPlan() async {
+    final plan = _plans[_selectedPlanIndex!];
+    final planId = plan['id']?.toString() ?? '';
+    if (planId.isEmpty) {
+      _showMessage('This plan is missing its identifier. Please try again.');
+      return;
+    }
+
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final token = preferences.getString('jwtToken');
+    if (token != null && token.trim().isNotEmpty) {
+      if (planId == 'free') {
+        _goToHome();
+      } else {
+        await _startSubscriptionCheckout();
+      }
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Register(
+          selectedPlan: plan['name']?.toString(),
+          selectedPlanId: planId == 'free' ? null : planId,
+          planPrice: _getPlanPrice(_selectedPlanIndex!).toDouble(),
+          billingPeriod: _isYearly ? 'yearly' : 'monthly',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startSubscriptionCheckout() async {
+    if (_isProcessingPayment || _selectedPlanIndex == null) return;
+    final plan = _plans[_selectedPlanIndex!];
+    final planId = plan['id']?.toString();
+    if (planId == null || planId == 'free') {
+      _showMessage('The Free plan does not require a payment.');
+      return;
+    }
+
+    setState(() => _isProcessingPayment = true);
+    try {
+      final order = await _apiService.createSubscriptionOrder(
+        planId: planId,
+        billingPeriod: _isYearly ? 'yearly' : 'monthly',
+      );
+      final keyId = order['keyId']?.toString();
+      final orderId = order['orderId']?.toString();
+      final amount = order['amount'];
+      final currency = order['currency']?.toString();
+      if (keyId == null ||
+          orderId == null ||
+          amount is! num ||
+          currency == null) {
+        throw Exception('The server returned incomplete payment details.');
+      }
+
+      final preferences = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      _razorpay.open({
+        'key': keyId,
+        'order_id': orderId,
+        'amount': amount,
+        'currency': currency,
+        'name': 'Dr. Skin',
+        'description':
+            '${plan['name']} ${_isYearly ? 'yearly' : 'monthly'} plan',
+        'prefill': {
+          'name': preferences.getString('username') ?? '',
+          'email': preferences.getString('email') ?? '',
+        },
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isProcessingPayment = false);
+      _showMessage('Unable to start payment: $error');
+    }
+  }
+
+  Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    final paymentId = response.paymentId;
+    final orderId = response.orderId;
+    final signature = response.signature;
+    if (paymentId == null || orderId == null || signature == null) {
+      if (mounted) setState(() => _isProcessingPayment = false);
+      _showMessage('Payment details were incomplete. Please contact support.');
+      return;
+    }
+
+    setState(() => _isProcessingPayment = true);
+    try {
+      final status = await _apiService.verifySubscriptionPayment(
+        paymentId: paymentId,
+        orderId: orderId,
+        signature: signature,
+      );
+      if (!mounted) return;
+      setState(() => _isProcessingPayment = false);
+      _showMessage(
+        '${status['planName'] ?? 'Subscription'} activated successfully.',
+      );
+      _goToHome();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isProcessingPayment = false);
+      _showMessage(
+        'Payment was received, but subscription verification failed. '
+        'Please contact support with payment ID $paymentId. ($error)',
+      );
+    }
+  }
+
+  void _handlePaymentError(PaymentFailureResponse response) {
+    if (mounted) setState(() => _isProcessingPayment = false);
+    _showMessage(response.message ?? 'Payment was not completed.');
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    _showMessage(
+        'External wallet selected: ${response.walletName ?? 'wallet'}');
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _goToHome() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => MyHomePage()),
+      (_) => false,
+    );
+  }
+
+  @override
+  void dispose() {
+    _razorpay.clear();
+    super.dispose();
+  }
 
   double _getPlanPrice(int index) {
-    return _isYearly 
-        ? _plans[index]['yearlyPrice'].toDouble() 
+    return _isYearly
+        ? _plans[index]['yearlyPrice'].toDouble()
         : _plans[index]['monthlyPrice'].toDouble();
   }
 
@@ -89,36 +243,61 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
           children: [
             // Header
             _buildHeader(context),
-            
+
             // Scrollable content
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
-                    
-                    // Billing toggle
-                    _buildBillingToggle(),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Plans
-                    _buildPlansSection(),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Trust badges
-                    _buildTrustBadges(),
-                    
-                    const SizedBox(height: 100),
-                  ],
-                ),
-              ),
+              child: _isLoadingPlans
+                  ? const Center(child: CircularProgressIndicator())
+                  : _plansError != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Unable to load subscription plans.\n$_plansError',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: _loadPlans,
+                                  child: const Text('Try again'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 20),
+
+                              // Billing toggle
+                              _buildBillingToggle(),
+
+                              const SizedBox(height: 32),
+
+                              // Plans
+                              _buildPlansSection(),
+
+                              const SizedBox(height: 32),
+
+                              // Trust badges
+                              _buildTrustBadges(),
+
+                              const SizedBox(height: 100),
+                            ],
+                          ),
+                        ),
             ),
-            
+
             // Bottom CTA
-            if (_selectedPlanIndex != null) _buildBottomCTA(),
+            if (!_isLoadingPlans &&
+                _plansError == null &&
+                _selectedPlanIndex != null)
+              _buildBottomCTA(),
           ],
         ),
       ),
@@ -161,9 +340,20 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
               // Skip to Login
               TextButton(
                 onPressed: () {
+                  final hasPaidPlan = _selectedPlanIndex != null &&
+                      _plans[_selectedPlanIndex!]['id'] != 'free';
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => LoginPage()),
+                    MaterialPageRoute(
+                      builder: (context) => LoginPage(
+                        subscriptionPlanId: hasPaidPlan
+                            ? _plans[_selectedPlanIndex!]['id']?.toString()
+                            : null,
+                        subscriptionBillingPeriod: hasPaidPlan
+                            ? (_isYearly ? 'yearly' : 'monthly')
+                            : null,
+                      ),
+                    ),
                   );
                 },
                 child: Text(
@@ -228,7 +418,8 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                   top: -8,
                   right: 10,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [Color(0xFF6B73FF), Color(0xFF9575FF)],
@@ -302,7 +493,7 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
   Widget _buildPlanCard(int index) {
     final plan = _plans[index];
     final isSelected = _selectedPlanIndex == index;
-    final isPopular = plan['isPopular'];
+    final isPopular = plan['isPopular'] == true || plan['popular'] == true;
     final price = _getPlanPrice(index);
     final savingsText = _getSavingsText(index);
 
@@ -385,9 +576,9 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                       ],
                     ],
                   ),
-                  
+
                   const SizedBox(height: 8),
-                  
+
                   // Description
                   Text(
                     plan['description'],
@@ -397,9 +588,9 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                       height: 1.4,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // Price
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +625,7 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                       ),
                     ],
                   ),
-                  
+
                   if (savingsText.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Container(
@@ -456,9 +647,9 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                       ),
                     ),
                   ],
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Features
                   ...List.generate(
                     plan['features'].length,
@@ -495,9 +686,9 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Select button
                   SizedBox(
                     width: double.infinity,
@@ -508,12 +699,10 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                         });
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isSelected
-                            ? primaryColor
-                            : Colors.transparent,
-                        foregroundColor: isSelected
-                            ? Colors.white
-                            : primaryColor,
+                        backgroundColor:
+                            isSelected ? primaryColor : Colors.transparent,
+                        foregroundColor:
+                            isSelected ? Colors.white : primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -538,7 +727,7 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                 ],
               ),
             ),
-            
+
             // Selected indicator
             if (isSelected)
               Positioned(
@@ -593,7 +782,7 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
               ),
               _buildTrustBadge(
                 Icons.cancel_outlined,
-                'Cancel\nAnytime',
+                'No Auto-\nRenewal',
               ),
               Container(
                 width: 1,
@@ -608,7 +797,7 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No hidden charges • Full refund within 7 days',
+            'One-time payment • No automatic renewal',
             style: TextStyle(
               fontSize: 13,
               color: Colors.grey.shade600,
@@ -703,19 +892,8 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to registration with selected plan
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => Register(
-                        selectedPlan: _plans[_selectedPlanIndex!]['name'],
-                        planPrice: _getPlanPrice(_selectedPlanIndex!),
-                        billingPeriod: _isYearly ? 'yearly' : 'monthly',
-                      ),
-                    ),
-                  );
-                },
+                onPressed:
+                    _isProcessingPayment ? null : _continueWithSelectedPlan,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   foregroundColor: Colors.white,
@@ -728,17 +906,21 @@ class _SubscriptionPlansPageState extends State<SubscriptionPlansPage> {
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
+                  children: [
                     Text(
-                      'Continue to Registration',
-                      style: TextStyle(
+                      _isProcessingPayment
+                          ? 'Preparing payment...'
+                          : _plans[_selectedPlanIndex!]['id'] == 'free'
+                              ? 'Continue with Free Plan'
+                              : 'Continue to Secure Payment',
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 20),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
                   ],
                 ),
               ),

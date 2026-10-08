@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:O2ISkinSense/Onboboarding/onboarding_items.dart';
-import 'package:O2ISkinSense/Signup/SubscriptionPlansPage.dart';
+import 'package:O2ISkinSense/Signup/LoginPage.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:typicons_flutter/typicons_flutter.dart';
 
@@ -113,13 +113,18 @@ class _OnboardingViewState extends State<OnboardingView> {
       child: TextButton(
           onPressed: () async {
             final pres = await SharedPreferences.getInstance();
-            pres.setBool("onboarding", true);
+            await pres.setBool("onboarding", true);
 
             //After we press get started button this onboarding value become true
             // same key
             if (!mounted) return;
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (context) => SubscriptionPlansPage()));
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    const LoginPage(showPlansAfterLogin: true),
+              ),
+            );
           },
           child: const Text(
             "Get started",

@@ -7,14 +7,18 @@ import 'package:O2ISkinSense/Signup/LoginPage.dart';
 
 class Register extends StatefulWidget {
   final String? selectedPlan;
+  final String? selectedPlanId;
   final double? planPrice;
   final String? billingPeriod;
+  final bool showPlansAfterLogin;
 
   const Register({
     Key? key,
     this.selectedPlan,
+    this.selectedPlanId,
     this.planPrice,
     this.billingPeriod,
+    this.showPlansAfterLogin = false,
   }) : super(key: key);
 
   @override
@@ -23,10 +27,11 @@ class Register extends StatefulWidget {
 
 // Keep backward compatibility
 class RegisterPage extends Register {
-  RegisterPage({Key? key}) : super(key: key);
+  RegisterPage({Key? key, bool showPlansAfterLogin = false})
+      : super(key: key, showPlansAfterLogin: showPlansAfterLogin);
 }
 
-class _RegisterPageState extends State<RegisterPage> {
+class _RegisterPageState extends State<Register> {
   final _formKey = GlobalKey<FormState>();
   String _userName = '';
   String _email = '';
@@ -44,10 +49,8 @@ class _RegisterPageState extends State<RegisterPage> {
       setState(() {
         _isLoading = true;
       });
-      print(
-          "fdgfdghf ${_userName.trim()} ,${_email.trim()},${_password.trim()},${_mobileNo.trim()},${_registrationTermCondition}");
       try {
-        final response = await _apiService.registerUser(
+        await _apiService.registerUser(
           userName: _userName.trim(),
           email: _email.trim(),
           password: _password.trim(),
@@ -66,8 +69,12 @@ class _RegisterPageState extends State<RegisterPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-              builder: (context) =>
-                  LoginPage()), // Replace with your desired page
+            builder: (context) => LoginPage(
+              subscriptionPlanId: widget.selectedPlanId,
+              subscriptionBillingPeriod: widget.billingPeriod,
+              showPlansAfterLogin: widget.showPlansAfterLogin,
+            ),
+          ),
         );
       } catch (e) {
         // Show error message
@@ -153,7 +160,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                   ),
                 ],
-                
+
                 Center(
                   child: Lottie.asset(
                     'assets/anima.json', // Path to your Lottie file
@@ -404,8 +411,9 @@ class _RegisterPageState extends State<RegisterPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              LoginPage(), // Navigate to RegisterPage
+                          builder: (context) => LoginPage(
+                            showPlansAfterLogin: widget.showPlansAfterLogin,
+                          ),
                         ),
                       );
                     },

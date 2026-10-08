@@ -6,24 +6,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl = 'http://147.93.108.99:7078';
+  static const int _maxDiagnosisImageBytes = 8 * 1024 * 1024;
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('jwtToken');
   }
-  
+
   /// Get current user role from SharedPreferences
   Future<String?> _getUserRole() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('roles');
   }
-  
+
   /// Check if current user is a doctor
   Future<bool> isDoctor() async {
     final role = await _getUserRole();
     return role == 'ROLE_DOCTOR';
   }
-  
+
   /// Check if current user is a patient
   Future<bool> isPatient() async {
     final role = await _getUserRole();
@@ -42,6 +43,12 @@ class ApiService {
       final token = await _getToken();
       if (token == null || token.trim().isEmpty) {
         return {'error': 'Please log in before starting an AI diagnosis'};
+      }
+      if (await imageFile.length() > _maxDiagnosisImageBytes) {
+        return {
+          'error':
+              'Image too large (max 8 MB). Please crop or choose a smaller image.',
+        };
       }
 
       final request = http.MultipartRequest(
@@ -90,6 +97,7 @@ class ApiService {
       return {'error': 'Failed to connect to the diagnosis server: $e'};
     }
   }
+
   Future<dynamic> registerUser({
     required String userName,
     required String email,
@@ -106,8 +114,7 @@ class ApiService {
       'password': password,
       'mobileNo': mobileNo,
       'isDoctor': isDoctor,
-      'registrationTermCondition':
-          registrationTermCondition,
+      'registrationTermCondition': registrationTermCondition,
     };
 
     try {
@@ -119,8 +126,7 @@ class ApiService {
         body: jsonEncode(body),
       );
 
-      if (response.statusCode == 200 ||
-          response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         return response.body;
       }
 
@@ -132,6 +138,88 @@ class ApiService {
         'Error during registration: $e',
       );
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getSubscriptionPlans() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/subscriptions/plans'),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load subscription plans (HTTP ${response.statusCode})',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      throw Exception('Subscription plans response was not a list.');
+    }
+    return decoded
+        .whereType<Map>()
+        .map((plan) => plan.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> createSubscriptionOrder({
+    required String planId,
+    required String billingPeriod,
+  }) async {
+    final token = await _getToken();
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Please log in before purchasing a subscription.');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/subscriptions/orders'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'planId': planId,
+        'billingPeriod': billingPeriod,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw Exception(
+        'Unable to create payment order (HTTP ${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Payment order response was not an object.');
+    }
+    return decoded.cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> verifySubscriptionPayment({
+    required String paymentId,
+    required String orderId,
+    required String signature,
+  }) async {
+    final token = await _getToken();
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Please log in before verifying the payment.');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/subscriptions/verify'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'razorpayOrderId': orderId,
+        'razorpayPaymentId': paymentId,
+        'razorpaySignature': signature,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Payment verification failed (HTTP ${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Payment verification response was not an object.');
+    }
+    return decoded.cast<String, dynamic>();
   }
 
   Future<bool> getDoctorProfile(String authToken) async {
@@ -167,6 +255,7 @@ class ApiService {
       return null;
     }
   }
+
   Future<Map<String, dynamic>> loginUser({
     required String email,
     required String password,
@@ -197,6 +286,7 @@ class ApiService {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('email', email.trim());
 
     if (responseData['jwtToken'] != null) {
       await prefs.setString(
@@ -331,10 +421,8 @@ class ApiService {
 
     final response = await request.send();
 
-    if (response.statusCode != 200 &&
-        response.statusCode != 201) {
-      final body =
-          await response.stream.bytesToString();
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      final body = await response.stream.bytesToString();
 
       throw Exception(
         'Failed to upload file: $body',
@@ -362,9 +450,7 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (data is List) {
-        return data
-            .whereType<Map<String, dynamic>>()
-            .toList();
+        return data.whereType<Map<String, dynamic>>().toList();
       }
     }
 
@@ -494,8 +580,7 @@ class ApiService {
       body: jsonEncode(body),
     );
 
-    if (response.statusCode != 200 &&
-        response.statusCode != 201) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(
         'Failed to update appointment status: ${response.body}',
       );
@@ -522,8 +607,7 @@ class ApiService {
       body: jsonEncode(availabilityData),
     );
 
-    if (response.statusCode != 200 &&
-        response.statusCode != 201) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(
         'Failed to save availability: ${response.body}',
       );
@@ -608,15 +692,16 @@ class ApiService {
         // Filter to only include dermatology specialists
         return data.where((doctor) {
           if (doctor is! Map<String, dynamic>) return false;
-          
-          final spec = (doctor['specialization'] ?? '').toString().toLowerCase();
-          
+
+          final spec =
+              (doctor['specialization'] ?? '').toString().toLowerCase();
+
           // Only include dermatology-related specializations
-          return spec.contains('dermat') || 
-                 spec.contains('skin') || 
-                 spec.contains('cosmetic') ||
-                 spec.contains('aesthetic') ||
-                 spec.contains('hair');
+          return spec.contains('dermat') ||
+              spec.contains('skin') ||
+              spec.contains('cosmetic') ||
+              spec.contains('aesthetic') ||
+              spec.contains('hair');
         }).toList();
       }
     }

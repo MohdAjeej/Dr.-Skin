@@ -29,7 +29,9 @@ class _CropImagePageState extends State<CropImagePage> {
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: widget.image.path,
         aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 90,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        compressQuality: 80,
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: 'Crop Your Image',

@@ -1,14 +1,23 @@
-
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:O2ISkinSense/Api/ApiService.dart';
 import 'package:O2ISkinSense/Signup/Register.dart';
+import 'package:O2ISkinSense/Signup/SubscriptionPlansPage.dart';
 import 'package:O2ISkinSense/BottomPages/BottomNav.dart';
 import 'package:O2ISkinSense/Doctor/DoctorBottomNav.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final String? subscriptionPlanId;
+  final String? subscriptionBillingPeriod;
+  final bool showPlansAfterLogin;
+
+  const LoginPage({
+    super.key,
+    this.subscriptionPlanId,
+    this.subscriptionBillingPeriod,
+    this.showPlansAfterLogin = false,
+  });
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -47,11 +56,9 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       // Get saved user role from SharedPreferences
-      final SharedPreferences prefs =
-          await SharedPreferences.getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String userRole =
-          prefs.getString('roles') ?? 'ROLE_NORMAL';
+      final String userRole = prefs.getString('roles') ?? 'ROLE_NORMAL';
       final String? userId = prefs.getString('userId');
 
       debugPrint('User role detected: $userRole');
@@ -82,7 +89,14 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => MyHomePage(),
+            builder: (context) =>
+                widget.showPlansAfterLogin || widget.subscriptionPlanId != null
+                    ? SubscriptionPlansPage(
+                        initialPlanId: widget.subscriptionPlanId,
+                        initialBillingPeriod: widget.subscriptionBillingPeriod,
+                        checkoutAfterLogin: true,
+                      )
+                    : MyHomePage(),
           ),
         );
       }
@@ -279,7 +293,9 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => RegisterPage(),
+                          builder: (context) => RegisterPage(
+                            showPlansAfterLogin: widget.showPlansAfterLogin,
+                          ),
                         ),
                       );
                     },
@@ -301,5 +317,3 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
-
-

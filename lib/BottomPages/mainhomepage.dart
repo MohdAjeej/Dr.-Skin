@@ -136,9 +136,9 @@ class _MainHomePageState extends State<MainHomePage> {
       final ImagePicker picker = ImagePicker();
       final XFile? pickedImage = await picker.pickImage(
         source: source,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 80,
       );
 
       if (pickedImage != null && mounted) {

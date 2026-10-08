@@ -65,7 +65,7 @@ void main() async {
   final userRole = prefs.getString("roles") ?? "ROLE_NORMAL";
 
   runApp(MyApp(
-    onboarding: onboarding, 
+    onboarding: onboarding,
     jwtToken: jwtToken,
     userRole: userRole,
   ));
@@ -77,8 +77,8 @@ class MyApp extends StatelessWidget {
   final String userRole;
 
   const MyApp({
-    super.key, 
-    this.onboarding = false, 
+    super.key,
+    this.onboarding = false,
     this.jwtToken,
     required this.userRole,
   });
@@ -88,7 +88,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: onboarding
-          ? (jwtToken?.trim().isNotEmpty == true ? _getHomePageForRole() : LoginPage())
+          ? (jwtToken?.trim().isNotEmpty == true
+              ? _getHomePageForRole()
+              : const LoginPage(showPlansAfterLogin: true))
           : const OnboardingView(),
       builder: (context, child) {
         return Stack(

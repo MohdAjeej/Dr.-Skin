@@ -18,7 +18,12 @@ class _TakeOrUploadScreenState extends State<TakeOrUploadScreen> {
   // Method to pick image from gallery or camera
   Future<void> _pickImage(ImageSource source) async {
     final ImagePicker picker = ImagePicker();
-    final XFile? pickedImage = await picker.pickImage(source: source);
+    final XFile? pickedImage = await picker.pickImage(
+      source: source,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 80,
+    );
 
     if (pickedImage != null) {
       // Navigate directly to crop page with the selected image
