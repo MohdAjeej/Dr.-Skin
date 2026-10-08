@@ -5,9 +5,25 @@ import 'package:O2ISkinSense/Api/ApiService.dart';
 import 'package:O2ISkinSense/Signup/DoctorRegistrationComplete.dart';
 import 'package:O2ISkinSense/Signup/LoginPage.dart';
 
-class RegisterPage extends StatefulWidget {
+class Register extends StatefulWidget {
+  final String? selectedPlan;
+  final double? planPrice;
+  final String? billingPeriod;
+
+  const Register({
+    Key? key,
+    this.selectedPlan,
+    this.planPrice,
+    this.billingPeriod,
+  }) : super(key: key);
+
   @override
   _RegisterPageState createState() => _RegisterPageState();
+}
+
+// Keep backward compatibility
+class RegisterPage extends Register {
+  RegisterPage({Key? key}) : super(key: key);
 }
 
 class _RegisterPageState extends State<RegisterPage> {
@@ -84,6 +100,60 @@ class _RegisterPageState extends State<RegisterPage> {
             key: _formKey,
             child: ListView(
               children: [
+                // Show selected plan if available
+                if (widget.selectedPlan != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF6B73FF), Color(0xFF9575FF)],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0xFF6B73FF).withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${widget.selectedPlan} Plan Selected',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '₹${widget.planPrice?.toStringAsFixed(0)} / ${widget.billingPeriod}',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                
                 Center(
                   child: Lottie.asset(
                     'assets/anima.json', // Path to your Lottie file
